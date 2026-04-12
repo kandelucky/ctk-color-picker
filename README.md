@@ -4,6 +4,10 @@ A modern, **Photoshop-style color picker dialog** for [CustomTkinter](https://gi
 
 > Pure Python + Pillow. DPI-aware. Modal dialog. Works on Windows, macOS, Linux.
 
+<p align="center">
+  <img src="screenshots/picker.png" alt="Color picker dialog" width="320">
+</p>
+
 ---
 
 ## Features
@@ -82,6 +86,10 @@ app.mainloop()
 ```
 
 `askcolor()` opens the modal dialog, blocks until closed, and returns a hex string or `None` if cancelled.
+
+<p align="center">
+  <img src="screenshots/integration.png" alt="Picker integrated with an app" width="560">
+</p>
 
 ---
 
