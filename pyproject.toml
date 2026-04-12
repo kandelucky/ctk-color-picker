@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ctk-color-picker"
-version = "0.1.0"
+name = "ctk-tint-color-picker"
+version = "0.3.1"
 description = "Photoshop-style color picker for CustomTkinter — sat/val square, HSL lightness slider, hue slider, hex input, tint strip, and persistent saved colors"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -5,11 +5,11 @@ A modern, **Photoshop-style color picker dialog** for [CustomTkinter](https://gi
 > Pure Python + Pillow. DPI-aware. Modal dialog. Works on Windows, macOS, Linux.
 
 <p align="center">
-  <img src="screenshots/picker.png" alt="Color picker dialog" width="280">
+  <img src="https://raw.githubusercontent.com/kandelucky/ctk-color-picker/main/screenshots/picker.png" alt="Color picker dialog" width="280">
 </p>
 
 <p align="center">
-  <img src="screenshots/demo.gif" alt="Color picker in action" width="520">
+  <img src="https://raw.githubusercontent.com/kandelucky/ctk-color-picker/main/screenshots/demo.gif" alt="Color picker in action" width="520">
 </p>
 
 ---
@@ -39,14 +39,16 @@ A modern, **Photoshop-style color picker dialog** for [CustomTkinter](https://gi
 ## Install
 
 ```bash
+pip install ctk-tint-color-picker
+```
+
+Or from source for development:
+
+```bash
 git clone https://github.com/kandelucky/ctk-color-picker.git
 cd ctk-color-picker
 pip install -e .
 ```
-
-(`pip install -e .` installs the package in editable mode and pulls in `customtkinter` + `Pillow` automatically.)
-
-> PyPI release coming soon: `pip install ctk-color-picker`
 
 ## Quick start
 
@@ -71,7 +73,7 @@ app.mainloop()
 `askcolor()` opens the modal dialog, blocks until closed, and returns a hex string or `None` if cancelled.
 
 <p align="center">
-  <img src="screenshots/integration.png" alt="Picker integrated with an app" width="560">
+  <img src="https://raw.githubusercontent.com/kandelucky/ctk-color-picker/main/screenshots/integration.png" alt="Picker integrated with an app" width="560">
 </p>
 
 ---
