@@ -1,63 +1,53 @@
-import colorsys
 import tkinter as tk
 
 import customtkinter as ctk
-from PIL import Image, ImageTk
+from PIL import ImageTk
 
+from .config import PickerConfig, PickerTheme
+from .eyedrop import EyedropperController
 from .history import ColorHistory
-
-
-SV_W = 260
-SV_H = 185
-SV_REND_W = 130
-SV_REND_H = 92
-
-HUE_W = 260
-HUE_H = 18
-
-LIGHT_W = 260
-LIGHT_H = 18
-
-SWATCH_W = 96
-SWATCH_H = 24
-
-SAVED_PER_ROW = 10
-SAVED_TOTAL = 20
-SAVED_BTN = 18
-
-GRAYSCALE_COUNT = 13
-GRAY_BTN_W = 20
-GRAY_BTN_H = 16
+from .renderer import GradientRenderer
+from .state import HsvState
 
 
 class ColorPickerDialog(ctk.CTkToplevel):
-    def __init__(self, master, initial_color: str = "#1f6aa5",
+    """Modal color picker dialog.
+
+    Shows a saturation × value square, hue slider, HSL lightness slider,
+    hex input, old/new comparison swatches, a tint strip of the current
+    color, and a persistent saved colors palette.
+
+    After the dialog closes, `self.result` holds the picked hex string
+    or `None` if the user cancelled.
+    """
+
+    def __init__(self, master, initial_color: str = "#ffffff",
                  history: ColorHistory | None = None,
-                 title: str = "Color Picker"):
+                 title: str = "Color Picker",
+                 config: PickerConfig | None = None,
+                 theme: PickerTheme | None = None):
         super().__init__(master)
         self.title(title)
         self.resizable(False, False)
         self.transient(master)
 
         self.result: str | None = None
-        self._initial = initial_color or "#1f6aa5"
+        self._initial = initial_color or "#ffffff"
+        self._title = title
         self._history = history if history is not None else ColorHistory()
-
-        self._hue = 0.0
-        self._saturation = 0.0
-        self._value = 0.0
-        self._set_from_hex(self._initial)
+        self._config = config or PickerConfig()
+        self._theme = theme or PickerTheme()
+        self._renderer = GradientRenderer()
+        self._state = HsvState.from_hex(self._initial)
 
         try:
             self._scale = ctk.ScalingTracker.get_window_scaling(self) or 1.0
         except Exception:
             self._scale = 1.0
-        self._sv_w = int(SV_W * self._scale)
-        self._sv_h = int(SV_H * self._scale)
-        self._hue_w = int(HUE_W * self._scale)
-        self._hue_h = int(HUE_H * self._scale)
-        self._light_w = int(LIGHT_W * self._scale)
-        self._light_h = int(LIGHT_H * self._scale)
+        self._sv_w, self._sv_h = self._scaled(self._config.sv_size)
+        self._sv_rend_w, self._sv_rend_h = self._scaled(self._config.sv_render_size)
+        self._hue_w, self._hue_h = self._scaled(self._config.hue_size)
+        self._light_w, self._light_h = self._scaled(self._config.light_size)
 
         self._sv_photo: ImageTk.PhotoImage | None = None
         self._hue_photo: ImageTk.PhotoImage | None = None
@@ -65,7 +55,12 @@ class ColorPickerDialog(ctk.CTkToplevel):
         self._saved_swatches: dict[str, ctk.CTkButton] = {}
         self._recent_slots: list[ctk.CTkButton] = []
         self._tint_swatches: list[ctk.CTkButton] = []
-        self._suspend_hex = False
+
+        self._eyedropper = EyedropperController(
+            dialog=self,
+            on_picked=self._on_eyedrop_result,
+            config=self._config.eyedrop,
+        )
 
         self._build_ui()
         self._render_hue()
@@ -80,6 +75,373 @@ class ColorPickerDialog(ctk.CTkToplevel):
         self.after(50, self._grab)
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self.bind("<Escape>", lambda _e: self._on_cancel())
+        self.bind("<Return>", lambda _e: self._on_ok())
+
+    def _scaled(self, size: tuple[int, int]) -> tuple[int, int]:
+        return int(size[0] * self._scale), int(size[1] * self._scale)
+
+    # --- UI build -----------------------------------------------------------
+
+    def _build_ui(self) -> None:
+        padx, pady = self._config.window_padding
+        container = ctk.CTkFrame(self, fg_color="transparent")
+        container.pack(padx=padx, pady=pady)
+
+        self._build_compare_row(container)
+        self._build_tint_strip(container)
+        self._build_sv_canvas(container)
+        self._build_sliders(container)
+        self._build_hex_input(container)
+        self._build_saved_row(container)
+        self._build_buttons(container)
+
+    def _build_compare_row(self, parent) -> None:
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(pady=(0, 12))
+
+        self.eyedrop_btn = ctk.CTkButton(
+            row, text="💧 Pick",
+            width=80, height=self._config.compare_swatch_size[1],
+            corner_radius=8, font=("", 11),
+            fg_color=self._theme.plus_button_fg,
+            hover_color=self._theme.plus_button_hover,
+            command=self._eyedropper.start,
+        )
+        self.eyedrop_btn.pack(side="left", padx=(0, 8))
+
+        self.new_swatch = self._make_compare_swatch(row)
+        self.new_swatch.pack(side="left", padx=(0, 6))
+        self.new_swatch.bind(
+            "<Button-1>", lambda _e: self._load_color(self._state.to_hex()))
+
+        self.old_swatch = self._make_compare_swatch(row)
+        self.old_swatch.pack(side="left")
+        self.old_swatch.bind(
+            "<Button-1>", lambda _e: self._load_color(self._initial))
+
+    def _make_compare_swatch(self, parent) -> ctk.CTkFrame:
+        w, h = self._config.compare_swatch_size
+        swatch = ctk.CTkFrame(
+            parent, width=w, height=h,
+            fg_color=self._initial,
+            border_width=1, border_color=self._theme.swatch_border,
+            corner_radius=8,
+        )
+        swatch.pack_propagate(False)
+        try:
+            swatch.configure(cursor="hand2")
+        except Exception:
+            pass
+        return swatch
+
+    def _build_tint_strip(self, parent) -> None:
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(pady=(0, 12))
+        w, h = self._config.tint_btn_size
+        for i in range(self._config.tint_count):
+            btn = ctk.CTkButton(
+                row, text="",
+                width=w, height=h,
+                fg_color="#000000", hover_color="#000000",
+                border_width=0, corner_radius=0,
+                command=lambda idx=i: self._click_tint(idx),
+            )
+            btn.pack(side="left", padx=0)
+            self._tint_swatches.append(btn)
+
+    def _build_sv_canvas(self, parent) -> None:
+        self.sv_canvas = self._make_canvas(
+            parent, self._sv_w, self._sv_h, "crosshair",
+        )
+        self.sv_canvas.pack()
+        self.sv_canvas.bind("<Button-1>", self._on_sv_drag)
+        self.sv_canvas.bind("<B1-Motion>", self._on_sv_drag)
+
+    def _build_sliders(self, parent) -> None:
+        self.light_canvas = self._make_canvas(
+            parent, self._light_w, self._light_h, "sb_h_double_arrow",
+        )
+        self.light_canvas.pack(pady=(12, 0))
+        self.light_canvas.bind("<Button-1>", self._on_lightness_drag)
+        self.light_canvas.bind("<B1-Motion>", self._on_lightness_drag)
+
+        self.hue_canvas = self._make_canvas(
+            parent, self._hue_w, self._hue_h, "sb_h_double_arrow",
+        )
+        self.hue_canvas.pack(pady=(8, 0))
+        self.hue_canvas.bind("<Button-1>", self._on_hue_drag)
+        self.hue_canvas.bind("<B1-Motion>", self._on_hue_drag)
+
+    def _make_canvas(self, parent, w: int, h: int, cursor: str) -> tk.Canvas:
+        return tk.Canvas(
+            parent, width=w, height=h,
+            highlightthickness=1,
+            highlightbackground=self._theme.canvas_border,
+            bd=0, bg=self._theme.canvas_bg, cursor=cursor,
+        )
+
+    def _build_hex_input(self, parent) -> None:
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(pady=(10, 0), fill="x")
+        ctk.CTkLabel(row, text="Hex", font=("", 10), width=28,
+                     anchor="w").pack(side="left")
+
+        self.hex_var = tk.StringVar(value=self._initial)
+        self.hex_entry = ctk.CTkEntry(
+            row, textvariable=self.hex_var,
+            height=26, font=("", 11), corner_radius=8,
+        )
+        self.hex_entry.pack(side="left", fill="x", expand=True)
+        self.hex_entry.bind("<Return>", lambda _e: self._on_hex_commit())
+        self.hex_entry.bind("<FocusOut>", lambda _e: self._on_hex_commit())
+
+    def _build_saved_row(self, parent) -> None:
+        header = ctk.CTkFrame(parent, fg_color="transparent")
+        header.pack(fill="x", pady=(14, 4))
+        ctk.CTkLabel(
+            header, text="SAVED COLORS",
+            font=("", 10, "bold"),
+            text_color=self._theme.header_color, anchor="w",
+        ).pack(side="left")
+        ctk.CTkButton(
+            header, text="+", width=24, height=22,
+            font=("", 14, "bold"), corner_radius=8,
+            fg_color=self._theme.plus_button_fg,
+            hover_color=self._theme.plus_button_hover,
+            command=self._save_current,
+        ).pack(side="right")
+
+        self.recents_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        self.recents_frame.pack(fill="x")
+        self._build_recents_slots()
+
+    def _build_recents_slots(self) -> None:
+        for child in self.recents_frame.winfo_children():
+            child.destroy()
+        self._recent_slots = []
+
+        rows: list[ctk.CTkFrame] = []
+        for r in range(self._config.saved_rows):
+            row = ctk.CTkFrame(self.recents_frame, fg_color="transparent")
+            row.pack(pady=(0 if r == 0 else 4, 0))
+            rows.append(row)
+
+        total = self._config.saved_rows * self._config.saved_per_row
+        for i in range(total):
+            target = rows[i // self._config.saved_per_row]
+            slot = ctk.CTkButton(
+                target, text="",
+                width=self._config.saved_btn_size,
+                height=self._config.saved_btn_size,
+                fg_color=self._theme.placeholder_fg,
+                hover_color=self._theme.placeholder_fg,
+                border_width=1,
+                border_color=self._theme.placeholder_border,
+                corner_radius=2,
+                command=lambda: None,
+            )
+            slot.pack(side="left", padx=3)
+            self._recent_slots.append(slot)
+
+    def _build_buttons(self, parent) -> None:
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(pady=(14, 0), fill="x")
+        ctk.CTkButton(
+            row, text="OK", height=30, corner_radius=8,
+            command=self._on_ok,
+        ).pack(fill="x")
+
+    # --- rendering ----------------------------------------------------------
+
+    def _render_sv(self) -> None:
+        img = self._renderer.sv_square(
+            self._state.hue, self._sv_w, self._sv_h,
+            self._sv_rend_w, self._sv_rend_h,
+        )
+        self._sv_photo = ImageTk.PhotoImage(img)
+        self._set_canvas_gradient(self.sv_canvas, self._sv_photo)
+        self._draw_sv_indicator()
+
+    def _render_hue(self) -> None:
+        img = self._renderer.hue_strip(self._hue_w, self._hue_h)
+        self._hue_photo = ImageTk.PhotoImage(img)
+        self._set_canvas_gradient(self.hue_canvas, self._hue_photo)
+        self._draw_hue_indicator()
+
+    def _render_lightness(self) -> None:
+        img = self._renderer.lightness_strip(
+            self._state, self._light_w, self._light_h,
+        )
+        self._light_photo = ImageTk.PhotoImage(img)
+        self._set_canvas_gradient(self.light_canvas, self._light_photo)
+        self._draw_lightness_indicator()
+
+    @staticmethod
+    def _set_canvas_gradient(canvas: tk.Canvas, photo: ImageTk.PhotoImage) -> None:
+        canvas.delete("gradient")
+        canvas.create_image(0, 0, anchor="nw", image=photo, tags="gradient")
+
+    # --- indicators ---------------------------------------------------------
+
+    def _draw_sv_indicator(self) -> None:
+        cx = int(self._state.saturation * (self._sv_w - 1))
+        cy = int((1 - self._state.value) * (self._sv_h - 1))
+        r = max(7, int(7 * self._scale))
+        self.sv_canvas.delete("indicator")
+        self.sv_canvas.create_oval(
+            cx - r, cy - r, cx + r, cy + r,
+            outline="white", width=2, tags="indicator",
+        )
+        self.sv_canvas.create_oval(
+            cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1,
+            outline="black", width=1, tags="indicator",
+        )
+
+    def _draw_hue_indicator(self) -> None:
+        self._draw_vbar(self.hue_canvas,
+                        self._state.hue * (self._hue_w - 1),
+                        self._hue_h)
+
+    def _draw_lightness_indicator(self) -> None:
+        self._draw_vbar(self.light_canvas,
+                        self._state.lightness() * (self._light_w - 1),
+                        self._light_h)
+
+    @staticmethod
+    def _draw_vbar(canvas: tk.Canvas, x: float, h: int) -> None:
+        cx = int(x)
+        canvas.delete("indicator")
+        canvas.create_rectangle(
+            cx - 2, 0, cx + 2, h,
+            outline="white", width=2, tags="indicator",
+        )
+
+    # --- event handlers -----------------------------------------------------
+
+    def _on_sv_drag(self, event) -> None:
+        if self._eyedropper.active:
+            return
+        x = max(0, min(self._sv_w - 1, event.x))
+        y = max(0, min(self._sv_h - 1, event.y))
+        self._state.saturation = x / (self._sv_w - 1)
+        self._state.value = 1 - y / (self._sv_h - 1)
+        self._draw_sv_indicator()
+        self._render_lightness()
+        self._update_preview()
+
+    def _on_hue_drag(self, event) -> None:
+        if self._eyedropper.active:
+            return
+        x = max(0, min(self._hue_w - 1, event.x))
+        self._state.hue = x / (self._hue_w - 1)
+        self._render_sv()
+        self._render_lightness()
+        self._draw_hue_indicator()
+        self._update_preview()
+
+    def _on_lightness_drag(self, event) -> None:
+        if self._eyedropper.active:
+            return
+        x = max(0, min(self._light_w - 1, event.x))
+        self._state.set_lightness(x / (self._light_w - 1))
+        self._draw_sv_indicator()
+        self._draw_lightness_indicator()
+        self._update_preview()
+
+    def _on_hex_commit(self) -> None:
+        text = self.hex_var.get().strip()
+        if not text.startswith("#"):
+            text = "#" + text
+        if self._state.load_hex(text.lower()):
+            self._render_sv()
+            self._render_hue()
+            self._render_lightness()
+            self._update_preview()
+
+    # --- preview / tints / recents ------------------------------------------
+
+    def _update_preview(self) -> None:
+        hex_color = self._state.to_hex()
+        try:
+            self.new_swatch.configure(fg_color=hex_color)
+        except Exception:
+            pass
+        self.hex_var.set(hex_color)
+        self._update_recent_highlight()
+        self._update_tints()
+
+    def _refresh_recents(self) -> None:
+        self._saved_swatches = {}
+        recents = self._history.all()
+        for i, slot in enumerate(self._recent_slots):
+            if i < len(recents):
+                color = recents[i]
+                slot.configure(
+                    fg_color=color, hover_color=color,
+                    border_color=self._theme.swatch_border, border_width=1,
+                    command=lambda c=color: self._load_color(c),
+                )
+                self._saved_swatches[color] = slot
+            else:
+                slot.configure(
+                    fg_color=self._theme.placeholder_fg,
+                    hover_color=self._theme.placeholder_fg,
+                    border_color=self._theme.placeholder_border,
+                    border_width=1,
+                    command=lambda: None,
+                )
+        self._update_recent_highlight()
+
+    def _update_recent_highlight(self) -> None:
+        current = self._state.to_hex()
+        for color, btn in self._saved_swatches.items():
+            if color == current:
+                btn.configure(border_color=self._theme.highlight_border,
+                              border_width=3)
+            else:
+                btn.configure(border_color=self._theme.swatch_border,
+                              border_width=1)
+
+    def _update_tints(self) -> None:
+        colors = self._renderer.tint_colors(
+            self._state, self._config.tint_count,
+            self._config.tint_range_width,
+        )
+        for btn, color in zip(self._tint_swatches, colors):
+            try:
+                btn.configure(fg_color=color, hover_color=color)
+            except Exception:
+                pass
+
+    def _click_tint(self, index: int) -> None:
+        colors = self._renderer.tint_colors(
+            self._state, self._config.tint_count,
+            self._config.tint_range_width,
+        )
+        if 0 <= index < len(colors):
+            self._load_color(colors[index])
+
+    def _load_color(self, hex_str: str) -> None:
+        if not self._state.load_hex(hex_str):
+            return
+        self._render_sv()
+        self._render_hue()
+        self._render_lightness()
+        self._update_preview()
+
+    def _save_current(self) -> None:
+        self._history.add(self._state.to_hex())
+        self._refresh_recents()
+
+    def _on_eyedrop_result(self, hex_color: str | None) -> None:
+        if hex_color is not None:
+            self._state.load_hex(hex_color)
+        self._render_sv()
+        self._render_hue()
+        self._render_lightness()
+        self._update_preview()
+
+    # --- lifecycle ----------------------------------------------------------
 
     def _grab(self) -> None:
         try:
@@ -103,395 +465,8 @@ class ColorPickerDialog(ctk.CTkToplevel):
         except Exception:
             pass
 
-    def _build_ui(self) -> None:
-        container = ctk.CTkFrame(self, fg_color="transparent")
-        container.pack(padx=4, pady=12)
-
-        compare_row = ctk.CTkFrame(container, fg_color="transparent")
-        compare_row.pack(pady=(0, 12))
-
-        ctk.CTkLabel(compare_row, text="New", font=("", 10),
-                     text_color="#888", width=28, anchor="w").pack(side="left")
-        self.new_swatch = ctk.CTkFrame(
-            compare_row, width=SWATCH_W, height=SWATCH_H,
-            fg_color=self._initial,
-            border_width=1, border_color="#666666", corner_radius=8,
-        )
-        self.new_swatch.pack(side="left", padx=(0, 12))
-        self.new_swatch.pack_propagate(False)
-
-        ctk.CTkLabel(compare_row, text="Old", font=("", 10),
-                     text_color="#888", width=28, anchor="w").pack(side="left")
-        self.old_swatch = ctk.CTkFrame(
-            compare_row, width=SWATCH_W, height=SWATCH_H,
-            fg_color=self._initial,
-            border_width=1, border_color="#666666", corner_radius=8,
-        )
-        self.old_swatch.pack(side="left")
-        self.old_swatch.pack_propagate(False)
-
-        gray_row = ctk.CTkFrame(container, fg_color="transparent")
-        gray_row.pack(pady=(0, 12))
-        for i in range(GRAYSCALE_COUNT):
-            btn = ctk.CTkButton(
-                gray_row, text="",
-                width=GRAY_BTN_W, height=GRAY_BTN_H,
-                fg_color="#000000", hover_color="#000000",
-                border_width=0,
-                corner_radius=0,
-                command=lambda idx=i: self._click_tint(idx),
-            )
-            btn.pack(side="left", padx=0)
-            self._tint_swatches.append(btn)
-
-        self.sv_canvas = tk.Canvas(
-            container, width=self._sv_w, height=self._sv_h,
-            highlightthickness=1, highlightbackground="#666666",
-            bd=0, bg="#1e1e1e", cursor="crosshair",
-        )
-        self.sv_canvas.pack()
-        self.sv_canvas.bind("<Button-1>", self._on_sv_drag)
-        self.sv_canvas.bind("<B1-Motion>", self._on_sv_drag)
-
-        self.light_canvas = tk.Canvas(
-            container, width=self._light_w, height=self._light_h,
-            highlightthickness=1, highlightbackground="#666666",
-            bd=0, bg="#1e1e1e", cursor="sb_h_double_arrow",
-        )
-        self.light_canvas.pack(pady=(12, 0))
-        self.light_canvas.bind("<Button-1>", self._on_lightness_drag)
-        self.light_canvas.bind("<B1-Motion>", self._on_lightness_drag)
-
-        self.hue_canvas = tk.Canvas(
-            container, width=self._hue_w, height=self._hue_h,
-            highlightthickness=1, highlightbackground="#666666",
-            bd=0, bg="#1e1e1e", cursor="sb_h_double_arrow",
-        )
-        self.hue_canvas.pack(pady=(8, 0))
-        self.hue_canvas.bind("<Button-1>", self._on_hue_drag)
-        self.hue_canvas.bind("<B1-Motion>", self._on_hue_drag)
-
-        hex_row = ctk.CTkFrame(container, fg_color="transparent")
-        hex_row.pack(pady=(10, 0), fill="x")
-
-        ctk.CTkLabel(hex_row, text="Hex", font=("", 10), width=28,
-                     anchor="w").pack(side="left")
-
-        self.hex_var = tk.StringVar(value=self._initial)
-        self.hex_entry = ctk.CTkEntry(
-            hex_row, textvariable=self.hex_var,
-            height=26, font=("", 11), corner_radius=8,
-        )
-        self.hex_entry.pack(side="left", fill="x", expand=True)
-        self.hex_entry.bind("<Return>", lambda _e: self._on_hex_commit())
-        self.hex_entry.bind("<FocusOut>", lambda _e: self._on_hex_commit())
-
-        saved_header = ctk.CTkFrame(container, fg_color="transparent")
-        saved_header.pack(fill="x", pady=(14, 4))
-        ctk.CTkLabel(
-            saved_header, text="SAVED COLORS",
-            font=("", 10, "bold"), text_color="#888888", anchor="w",
-        ).pack(side="left")
-        ctk.CTkButton(
-            saved_header, text="+", width=24, height=22,
-            font=("", 14, "bold"), corner_radius=8,
-            fg_color="#3a3a3a", hover_color="#4a4a4a",
-            command=self._save_current,
-        ).pack(side="right")
-
-        self.recents_frame = ctk.CTkFrame(container, fg_color="transparent")
-        self.recents_frame.pack(fill="x")
-        self._build_recents_slots()
-
-        btn_row = ctk.CTkFrame(container, fg_color="transparent")
-        btn_row.pack(pady=(14, 0), fill="x")
-
-        ctk.CTkButton(
-            btn_row, text="OK", height=30,
-            corner_radius=8,
-            command=self._on_ok,
-        ).pack(fill="x")
-
-    def _make_sv_image(self) -> Image.Image:
-        h_byte = min(255, max(0, int(self._hue * 255)))
-        data = bytearray(SV_REND_W * SV_REND_H * 3)
-        idx = 0
-        for y in range(SV_REND_H):
-            v_byte = int(255 * (1 - y / (SV_REND_H - 1)))
-            for x in range(SV_REND_W):
-                s_byte = int(255 * x / (SV_REND_W - 1))
-                data[idx] = h_byte
-                data[idx + 1] = s_byte
-                data[idx + 2] = v_byte
-                idx += 3
-        img = Image.frombytes("HSV", (SV_REND_W, SV_REND_H), bytes(data))
-        img = img.convert("RGB")
-        return img.resize((self._sv_w, self._sv_h), Image.BILINEAR)
-
-    def _make_hue_image(self) -> Image.Image:
-        w = self._hue_w
-        h = self._hue_h
-        row = bytearray()
-        for x in range(w):
-            h_byte = min(255, int(255 * x / (w - 1)))
-            row.extend([h_byte, 255, 255])
-        data = bytes(row) * h
-        img = Image.frombytes("HSV", (w, h), data)
-        return img.convert("RGB")
-
-    def _make_lightness_image(self) -> Image.Image:
-        w = self._light_w
-        h = self._light_h
-        r, g, b = colorsys.hsv_to_rgb(self._hue, self._saturation, self._value)
-        h_hls, _, s_hls = colorsys.rgb_to_hls(r, g, b)
-        row = bytearray()
-        for x in range(w):
-            l = x / (w - 1)
-            rr, gg, bb = colorsys.hls_to_rgb(h_hls, l, s_hls)
-            row.extend([round(rr * 255), round(gg * 255), round(bb * 255)])
-        data = bytes(row) * h
-        return Image.frombytes("RGB", (w, h), data)
-
-    def _render_sv(self) -> None:
-        img = self._make_sv_image()
-        self._sv_photo = ImageTk.PhotoImage(img)
-        self.sv_canvas.delete("gradient")
-        self.sv_canvas.create_image(
-            0, 0, anchor="nw", image=self._sv_photo, tags="gradient",
-        )
-        self._draw_sv_indicator()
-
-    def _render_hue(self) -> None:
-        img = self._make_hue_image()
-        self._hue_photo = ImageTk.PhotoImage(img)
-        self.hue_canvas.delete("gradient")
-        self.hue_canvas.create_image(
-            0, 0, anchor="nw", image=self._hue_photo, tags="gradient",
-        )
-        self._draw_hue_indicator()
-
-    def _render_lightness(self) -> None:
-        img = self._make_lightness_image()
-        self._light_photo = ImageTk.PhotoImage(img)
-        self.light_canvas.delete("gradient")
-        self.light_canvas.create_image(
-            0, 0, anchor="nw", image=self._light_photo, tags="gradient",
-        )
-        self._draw_lightness_indicator()
-
-    def _draw_sv_indicator(self) -> None:
-        cx = int(self._saturation * (self._sv_w - 1))
-        cy = int((1 - self._value) * (self._sv_h - 1))
-        r = max(7, int(7 * self._scale))
-        self.sv_canvas.delete("indicator")
-        self.sv_canvas.create_oval(
-            cx - r, cy - r, cx + r, cy + r,
-            outline="white", width=2, tags="indicator",
-        )
-        self.sv_canvas.create_oval(
-            cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1,
-            outline="black", width=1, tags="indicator",
-        )
-
-    def _draw_hue_indicator(self) -> None:
-        cx = int(self._hue * (self._hue_w - 1))
-        self.hue_canvas.delete("indicator")
-        self.hue_canvas.create_rectangle(
-            cx - 2, 0, cx + 2, self._hue_h,
-            outline="white", width=2, tags="indicator",
-        )
-
-    def _draw_lightness_indicator(self) -> None:
-        r, g, b = colorsys.hsv_to_rgb(self._hue, self._saturation, self._value)
-        _, l, _ = colorsys.rgb_to_hls(r, g, b)
-        cx = int(l * (self._light_w - 1))
-        self.light_canvas.delete("indicator")
-        self.light_canvas.create_rectangle(
-            cx - 2, 0, cx + 2, self._light_h,
-            outline="white", width=2, tags="indicator",
-        )
-
-    def _on_sv_drag(self, event) -> None:
-        x = max(0, min(self._sv_w - 1, event.x))
-        y = max(0, min(self._sv_h - 1, event.y))
-        self._saturation = x / (self._sv_w - 1)
-        self._value = 1 - y / (self._sv_h - 1)
-        self._draw_sv_indicator()
-        self._render_lightness()
-        self._update_preview()
-
-    def _on_hue_drag(self, event) -> None:
-        x = max(0, min(self._hue_w - 1, event.x))
-        self._hue = x / (self._hue_w - 1)
-        self._render_sv()
-        self._render_lightness()
-        self._draw_hue_indicator()
-        self._update_preview()
-
-    def _on_lightness_drag(self, event) -> None:
-        x = max(0, min(self._light_w - 1, event.x))
-        new_l = x / (self._light_w - 1)
-        r, g, b = colorsys.hsv_to_rgb(self._hue, self._saturation, self._value)
-        h_hls, _, s_hls = colorsys.rgb_to_hls(r, g, b)
-        nr, ng, nb = colorsys.hls_to_rgb(h_hls, new_l, s_hls)
-        new_h, new_s, new_v = colorsys.rgb_to_hsv(nr, ng, nb)
-        self._hue = new_h
-        self._saturation = new_s
-        self._value = new_v
-        self._draw_sv_indicator()
-        self._draw_lightness_indicator()
-        self._update_preview()
-
-    def _on_hex_commit(self) -> None:
-        if self._suspend_hex:
-            return
-        text = self.hex_var.get().strip()
-        if not text.startswith("#"):
-            text = "#" + text
-        if len(text) != 7:
-            return
-        try:
-            int(text[1:], 16)
-        except ValueError:
-            return
-        self._load_color(text.lower())
-
-    def _load_color(self, hex_str: str) -> None:
-        self._set_from_hex(hex_str)
-        self._render_sv()
-        self._render_hue()
-        self._render_lightness()
-        self._update_preview()
-
-    def _set_from_hex(self, hex_str: str) -> None:
-        s = (hex_str or "").strip().lstrip("#")
-        if len(s) != 6:
-            return
-        try:
-            r = int(s[0:2], 16) / 255
-            g = int(s[2:4], 16) / 255
-            b = int(s[4:6], 16) / 255
-        except ValueError:
-            return
-        h, sat, val = colorsys.rgb_to_hsv(r, g, b)
-        self._hue = h
-        self._saturation = sat
-        self._value = val
-
-    def _current_hex(self) -> str:
-        r, g, b = colorsys.hsv_to_rgb(self._hue, self._saturation, self._value)
-        return "#{:02x}{:02x}{:02x}".format(
-            round(r * 255), round(g * 255), round(b * 255))
-
-    def _update_preview(self) -> None:
-        hex_color = self._current_hex()
-        try:
-            self.new_swatch.configure(fg_color=hex_color)
-        except Exception:
-            pass
-        self._suspend_hex = True
-        try:
-            self.hex_var.set(hex_color)
-        finally:
-            self._suspend_hex = False
-        self._update_recent_highlight()
-        self._update_tints()
-
-    def _build_recents_slots(self) -> None:
-        for child in self.recents_frame.winfo_children():
-            child.destroy()
-        self._recent_slots = []
-
-        row1 = ctk.CTkFrame(self.recents_frame, fg_color="transparent")
-        row1.pack()
-        row2 = ctk.CTkFrame(self.recents_frame, fg_color="transparent")
-        row2.pack(pady=(4, 0))
-
-        for i in range(SAVED_TOTAL):
-            target = row1 if i < SAVED_PER_ROW else row2
-            slot = ctk.CTkButton(
-                target, text="",
-                width=SAVED_BTN, height=SAVED_BTN,
-                fg_color="#2a2a2a", hover_color="#2a2a2a",
-                border_width=1, border_color="#3a3a3a",
-                corner_radius=2,
-                command=lambda: None,
-            )
-            slot.pack(side="left", padx=3)
-            self._recent_slots.append(slot)
-
-    def _refresh_recents(self) -> None:
-        self._saved_swatches = {}
-        recents = self._history.all()
-        for i, slot in enumerate(self._recent_slots):
-            if i < len(recents):
-                color = recents[i]
-                slot.configure(
-                    fg_color=color, hover_color=color,
-                    border_color="#666666", border_width=1,
-                    command=lambda c=color: self._load_color(c),
-                )
-                self._saved_swatches[color] = slot
-            else:
-                slot.configure(
-                    fg_color="#2a2a2a", hover_color="#2a2a2a",
-                    border_color="#3a3a3a", border_width=1,
-                    command=lambda: None,
-                )
-        self._update_recent_highlight()
-
-    def _update_recent_highlight(self) -> None:
-        current = self._current_hex()
-        for color, btn in self._saved_swatches.items():
-            if color == current:
-                btn.configure(border_color="#ffffff", border_width=3)
-            else:
-                btn.configure(border_color="#666666", border_width=1)
-
-    def _compute_tint_colors(self) -> list[str]:
-        r, g, b = colorsys.hsv_to_rgb(self._hue, self._saturation, self._value)
-        h_hls, current_l, s_hls = colorsys.rgb_to_hls(r, g, b)
-
-        range_width = 0.5
-        half = range_width / 2
-        l_min = current_l - half
-        l_max = current_l + half
-        if l_max > 1.0:
-            l_min -= (l_max - 1.0)
-            l_max = 1.0
-        if l_min < 0.0:
-            l_max += (0.0 - l_min)
-            l_min = 0.0
-        l_min = max(0.0, l_min)
-        l_max = min(1.0, l_max)
-
-        colors = []
-        for i in range(GRAYSCALE_COUNT):
-            l = l_max - (l_max - l_min) * i / (GRAYSCALE_COUNT - 1)
-            rr, gg, bb = colorsys.hls_to_rgb(h_hls, l, s_hls)
-            colors.append("#{:02x}{:02x}{:02x}".format(
-                round(rr * 255), round(gg * 255), round(bb * 255)))
-        return colors
-
-    def _update_tints(self) -> None:
-        colors = self._compute_tint_colors()
-        for btn, color in zip(self._tint_swatches, colors):
-            try:
-                btn.configure(fg_color=color, hover_color=color)
-            except Exception:
-                pass
-
-    def _click_tint(self, index: int) -> None:
-        colors = self._compute_tint_colors()
-        if 0 <= index < len(colors):
-            self._load_color(colors[index])
-
-    def _save_current(self) -> None:
-        self._history.add(self._current_hex())
-        self._refresh_recents()
-
     def _on_ok(self) -> None:
-        color = self._current_hex()
+        color = self._state.to_hex()
         self._history.add(color)
         self.result = color
         self._release_and_destroy()
@@ -508,10 +483,16 @@ class ColorPickerDialog(ctk.CTkToplevel):
         self.destroy()
 
 
-def askcolor(master, initial: str = "#1f6aa5",
+def askcolor(master, initial: str = "#ffffff",
              history: ColorHistory | None = None,
-             title: str = "Color Picker") -> str | None:
-    dialog = ColorPickerDialog(master, initial_color=initial,
-                               history=history, title=title)
+             title: str = "Color Picker",
+             config: PickerConfig | None = None,
+             theme: PickerTheme | None = None) -> str | None:
+    """Open the color picker modally and return the picked hex or None."""
+    dialog = ColorPickerDialog(
+        master, initial_color=initial,
+        history=history, title=title,
+        config=config, theme=theme,
+    )
     dialog.wait_window()
     return dialog.result

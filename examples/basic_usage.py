@@ -20,7 +20,7 @@ def main():
     label.pack(pady=(20, 10))
 
     swatch = ctk.CTkFrame(app, width=200, height=60,
-                          fg_color="#1f6aa5",
+                          fg_color="#ffffff",
                           border_width=1, border_color="#666666",
                           corner_radius=8)
     swatch.pack(pady=10)
@@ -29,7 +29,7 @@ def main():
     def pick():
         current = label.cget("text").replace("Picked: ", "")
         if not current.startswith("#"):
-            current = "#1f6aa5"
+            current = "#ffffff"
         color = askcolor(app, initial=current)
         if color:
             label.configure(text=f"Picked: {color}")
