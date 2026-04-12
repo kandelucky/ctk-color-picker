@@ -5,7 +5,11 @@ A modern, **Photoshop-style color picker dialog** for [CustomTkinter](https://gi
 > Pure Python + Pillow. DPI-aware. Modal dialog. Works on Windows, macOS, Linux.
 
 <p align="center">
-  <img src="screenshots/picker.png" alt="Color picker dialog" width="320">
+  <img src="screenshots/picker.png" alt="Color picker dialog" width="280">
+</p>
+
+<p align="center">
+  <img src="screenshots/demo.gif" alt="Color picker in action" width="520">
 </p>
 
 ---
