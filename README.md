@@ -1,5 +1,9 @@
 # ctk-color-picker
 
+[![PyPI](https://img.shields.io/pypi/v/ctk-tint-color-picker?color=blue)](https://pypi.org/project/ctk-tint-color-picker/)
+[![Python](https://img.shields.io/pypi/pyversions/ctk-tint-color-picker)](https://pypi.org/project/ctk-tint-color-picker/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 A modern, **Photoshop-style color picker dialog** for [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter). One function call, one hex string back.
 
 > Pure Python + Pillow. DPI-aware. Modal dialog. Works on Windows, macOS, Linux.
