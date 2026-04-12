@@ -22,27 +22,6 @@ A modern, **Photoshop-style color picker dialog** for [CustomTkinter](https://gi
 - ⭐ Selection highlight on saved swatch matching current pick
 - 🖥️ DPI-aware `tk.Canvas` — matches CTk widget scaling
 
-## Visual
-
-```
-+----------------------------+
-| New [██]   Old [██]        |
-| ████████████████████████   |  ← tint strip
-| +----------------------+   |
-| |   Sat × Val square   |   |  ← drag to pick
-| +----------------------+   |
-| ████████████████████████   |  ← lightness
-| ████████████████████████   |  ← hue
-| Hex [#1f6aa5            ]  |
-| SAVED COLORS         [+]   |
-| ▢▢▢▢▢▢▢▢▢▢                |
-| ▢▢▢▢▢▢▢▢▢▢                |
-| [           OK         ]   |
-+----------------------------+
-```
-
----
-
 ## Requirements
 
 | | |
