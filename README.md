@@ -104,13 +104,64 @@ When the dialog opens, you see (top to bottom):
 
 ## Requirements
 
-| Requirement | Minimum version |
-|---|---|
-| Python | **3.10** |
-| customtkinter | **5.2.2** |
-| Pillow | **10.0.0** |
+This package needs three things on the user's machine to run.
 
-> Tested on Python 3.10 – 3.14, Windows 10/11. Should work on macOS and Linux but Windows is the primary target.
+### 1. Python 3.10 or newer
+
+The package uses modern type-hint syntax (`str | None` unions, etc.) that requires Python 3.10+. Tested up to Python 3.14.
+
+**Check if you have Python:**
+
+```bash
+python --version
+```
+
+If you see `Python 3.10` or higher, you're good. If not, download from [python.org](https://www.python.org/downloads/) — make sure to check "Add Python to PATH" during install on Windows.
+
+### 2. CustomTkinter 5.2.2 or newer
+
+This is the modern themed-Tkinter library that the picker is built on. The picker uses `CTkToplevel`, `CTkFrame`, `CTkButton`, `CTkLabel`, `CTkEntry`, plus `ScalingTracker` for DPI awareness — features that require version 5.2.2+.
+
+**Install:**
+
+```bash
+pip install "customtkinter>=5.2.2"
+```
+
+### 3. Pillow (PIL) 10.0.0 or newer
+
+Used to generate the gradient images for the saturation/value square, hue slider, and lightness slider. The picker creates PIL `Image` objects in HSV mode, converts them to RGB, and renders them onto `tk.Canvas` via `ImageTk.PhotoImage`.
+
+**Install:**
+
+```bash
+pip install "Pillow>=10.0.0"
+```
+
+### What about tkinter?
+
+`tkinter` ships with Python on Windows and macOS — no extra install needed. On Linux you may need to install it separately (`sudo apt install python3-tk` on Debian/Ubuntu, similar on other distros).
+
+### Quick install of everything
+
+If you've installed the package via `pip install -e .` (or once it's on PyPI), pip resolves and installs `customtkinter` and `Pillow` automatically — you don't need to install them manually.
+
+```bash
+git clone https://github.com/kandelucky/ctk-color-picker.git
+cd ctk-color-picker
+pip install -e .       # installs customtkinter and Pillow as deps
+python examples/basic_usage.py
+```
+
+### Operating system support
+
+| OS | Status |
+|---|---|
+| Windows 10 / 11 | ✅ Primary target, fully tested |
+| macOS | ⚠️ Should work — uses pure Python deps, no platform-specific code |
+| Linux | ⚠️ Should work — needs `python3-tk` system package |
+
+> The package contains no native code or OS-specific code paths. If CustomTkinter and Pillow work on your system, this should too.
 
 ---
 
