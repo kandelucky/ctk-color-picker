@@ -5,6 +5,14 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] — 2026-04-12
+
+### Fixed
+- Dialog could open partially below the screen edge when the parent
+  window was near the bottom of the display. `_center_on_parent` now
+  clamps the dialog to the visible screen area on all sides (with a
+  60 px reserve for the taskbar), not just the top-left.
+
 ## [0.3.1] — 2026-04-12
 
 ### Fixed

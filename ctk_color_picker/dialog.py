@@ -466,9 +466,13 @@ class ColorPickerDialog(ctk.CTkToplevel):
             mh = master.winfo_height()
             w = self.winfo_width()
             h = self.winfo_height()
+            sw = self.winfo_screenwidth()
+            sh = self.winfo_screenheight()
             x = mx + (mw - w) // 2
             y = my + (mh - h) // 2
-            self.geometry(f"+{max(0, x)}+{max(0, y)}")
+            x = max(0, min(x, sw - w))
+            y = max(0, min(y, sh - h - 60))
+            self.geometry(f"+{x}+{y}")
         except Exception:
             pass
 
