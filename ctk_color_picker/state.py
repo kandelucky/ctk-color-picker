@@ -1,3 +1,8 @@
+"""HSV color state model for ctk-color-picker.
+
+Defines `HsvState` — a mutable color model backed by HSV floats with
+helpers for hex / RGB / HSL round-trips and HSL-lightness editing.
+"""
 import colorsys
 from dataclasses import dataclass
 
@@ -16,12 +21,18 @@ class HsvState:
 
     @classmethod
     def from_hex(cls, hex_str: str) -> "HsvState":
+        """Create a new state initialized from a `#rrggbb` hex string."""
         state = cls()
         state.load_hex(hex_str)
         return state
 
     def load_hex(self, hex_str: str) -> bool:
-        """Parse a `#rrggbb` string and update state. Returns True on success."""
+        """Parse a `#rrggbb` hex and overwrite state in-place.
+
+        Accepts the `#` prefix optionally and is case-insensitive.
+        Returns True on success, False if the string is invalid — the
+        current state is left untouched in that case.
+        """
         s = (hex_str or "").strip().lstrip("#")
         if len(s) != 6:
             return False
@@ -44,13 +55,16 @@ class HsvState:
             round(r * 255), round(g * 255), round(b * 255))
 
     def to_rgb(self) -> tuple[float, float, float]:
+        """Return the current color as `(r, g, b)` floats in 0..1."""
         return colorsys.hsv_to_rgb(self.hue, self.saturation, self.value)
 
     def to_hls(self) -> tuple[float, float, float]:
+        """Return the current color as `(hue, lightness, saturation)` HLS floats."""
         r, g, b = self.to_rgb()
         return colorsys.rgb_to_hls(r, g, b)
 
     def lightness(self) -> float:
+        """Return just the HSL lightness value in 0..1."""
         return self.to_hls()[1]
 
     def set_lightness(self, new_l: float) -> None:

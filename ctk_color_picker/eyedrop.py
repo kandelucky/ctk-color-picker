@@ -1,3 +1,10 @@
+"""Screen-wide eyedropper controller for ctk-color-picker.
+
+`EyedropperController` manages the eyedrop lifecycle: withdraw the
+dialog, grab a full screen screenshot, show a fullscreen transparent
+overlay, follow the cursor with a live preview bubble, display a
+top-center hint toast, and sample the clicked pixel.
+"""
 import tkinter as tk
 from typing import Callable
 
@@ -40,6 +47,12 @@ class EyedropperController:
     # --- public -------------------------------------------------------------
 
     def start(self) -> None:
+        """Enter eyedrop mode.
+
+        Hides the parent dialog, captures a screenshot, and sets up the
+        overlay, preview bubble, and hint toast. Safe to call while
+        already active (becomes a no-op in that case).
+        """
         if self._active:
             return
         self._active = True
@@ -49,6 +62,7 @@ class EyedropperController:
 
     @property
     def active(self) -> bool:
+        """True while the eyedrop overlay is visible."""
         return self._active
 
     # --- setup --------------------------------------------------------------

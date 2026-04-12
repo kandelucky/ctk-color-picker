@@ -1,3 +1,9 @@
+"""PIL-based gradient image generation for ctk-color-picker.
+
+`GradientRenderer` is a stateless helper that produces the
+saturation/value square, hue strip, HSL lightness strip, and tint
+palette shown in the color picker dialog.
+"""
 import colorsys
 
 from PIL import Image

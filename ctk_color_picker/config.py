@@ -1,3 +1,9 @@
+"""Configuration dataclasses for ctk-color-picker.
+
+`PickerConfig` controls sizes and counts, `PickerTheme` controls colors,
+and `EyedropConfig` tunes the screen-eyedropper feature. All three are
+plain dataclasses — override individual fields to customize.
+"""
 from dataclasses import dataclass, field
 
 

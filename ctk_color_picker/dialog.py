@@ -1,3 +1,10 @@
+"""Photoshop-style color picker dialog for ctk-color-picker.
+
+Defines `ColorPickerDialog` (modal `CTkToplevel` with saturation/value
+square, hue slider, HSL lightness slider, hex input, tint strip,
+old/new comparison, saved colors palette, and screen eyedropper) and
+the `askcolor` convenience function.
+"""
 import tkinter as tk
 
 import customtkinter as ctk
@@ -488,7 +495,30 @@ def askcolor(master, initial: str = "#ffffff",
              title: str = "Color Picker",
              config: PickerConfig | None = None,
              theme: PickerTheme | None = None) -> str | None:
-    """Open the color picker modally and return the picked hex or None."""
+    """Open a modal color picker dialog and return the picked color.
+
+    This is a convenience wrapper around `ColorPickerDialog` that blocks
+    until the user confirms or cancels, then returns the result.
+
+    Args:
+        master: Parent Tk widget (the dialog is centered on it and grabbed
+            as modal).
+        initial: Starting color as `#rrggbb`. Also shown as "Old".
+        history: Custom `ColorHistory` instance. Uses a default one
+            pointing at `~/.ctk_color_picker/colors.json` when None.
+        title: Window title.
+        config: Optional `PickerConfig` overriding sizes and counts.
+        theme: Optional `PickerTheme` overriding widget colors.
+
+    Returns:
+        The picked hex string (like `"#ff5733"`), or `None` if the user
+        cancelled with Esc or the window close button.
+
+    Example:
+        >>> color = askcolor(app, initial="#1f6aa5")
+        >>> if color:
+        ...     button.configure(fg_color=color)
+    """
     dialog = ColorPickerDialog(
         master, initial_color=initial,
         history=history, title=title,
