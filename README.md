@@ -105,19 +105,18 @@ Methods: `.add(hex)`, `.all()`, `.clear()`.
 
 ---
 
-## Comparison
+## When to use this
 
-| | `tkinter.colorchooser` | `CTkColorPicker` (Akascape) | **`ctk-color-picker`** |
-|---|---|---|---|
-| Style | OS native | CTk wheel | **CTk + PIL** |
-| Sat / Val square | ❌ | ❌ | ✅ |
-| Hue slider | ❌ | ✅ | ✅ |
-| Lightness slider | ❌ | ❌ | ✅ |
-| Hex input | partial | ❌ | ✅ |
-| Old / New swatches | ❌ | ❌ | ✅ |
-| Tint strip | ❌ | ❌ | ✅ |
-| Saved colors (persistent) | ❌ | ❌ | ✅ |
-| DPI-aware canvas | n/a | partial | ✅ |
+Reach for **`ctk-color-picker`** when you want:
+
+- A themed picker that matches the rest of your CustomTkinter app
+- Saturation × value picking plus a separate HSL lightness control
+- A tint strip of the current color for quick shade tweaks
+- A persistent saved-colors palette shared across sessions
+- A screen eyedropper that samples any pixel with a single click
+- DPI-aware rendering on high-resolution Windows displays
+
+Reach for [`tkinter.colorchooser`](https://docs.python.org/3/library/tkinter.colorchooser.html) instead if you just need the OS native dialog with zero setup and no extra dependencies.
 
 ---
 
