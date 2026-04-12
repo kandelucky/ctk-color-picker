@@ -237,7 +237,12 @@ class EyedropperController:
                 pass
             self._overlay = None
 
-        self._screen_shot = None
+        if self._screen_shot is not None:
+            try:
+                self._screen_shot.close()
+            except Exception:
+                pass
+            self._screen_shot = None
         self._active = False
 
         try:
