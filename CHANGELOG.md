@@ -5,6 +5,17 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] — 2026-04-25
+
+### Fixed
+- Bottom-edge clamp in `_center_on_parent` was using `winfo_width/height`
+  on the dialog before it was mapped, so those calls returned `1x1` and
+  the clamp let `y` fall low enough that the dialog actually extended
+  below the screen / behind the taskbar. Two-phase clamp: skip the
+  first attempt when dimensions are still `1x1`, then re-run via
+  `after_idle` once the toplevel has rendered. Bottom reserve bumped
+  60 → 80 px and a small 8 px margin added on the other edges.
+
 ## [0.3.2] — 2026-04-12
 
 ### Fixed

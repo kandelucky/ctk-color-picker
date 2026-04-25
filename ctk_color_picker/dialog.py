@@ -458,20 +458,40 @@ class ColorPickerDialog(ctk.CTkToplevel):
             pass
 
     def _center_on_parent(self, master) -> None:
+        # Two-phase clamp. The first call may run before the toplevel
+        # has been mapped — winfo_width/height return 1x1 in that
+        # window, which makes the bottom-edge clamp ineffective and
+        # the dialog can end up extending past the taskbar. The
+        # ``after_idle`` re-runs once Tk has rendered the real
+        # geometry so the clamp uses correct dimensions.
+        self._clamp_on_screen(master)
+        try:
+            self.after_idle(lambda: self._clamp_on_screen(master))
+        except Exception:
+            pass
+
+    def _clamp_on_screen(self, master) -> None:
         try:
             master.update_idletasks()
+            self.update_idletasks()
             mx = master.winfo_rootx()
             my = master.winfo_rooty()
             mw = master.winfo_width()
             mh = master.winfo_height()
             w = self.winfo_width()
             h = self.winfo_height()
+            if w <= 1 or h <= 1:
+                # Not yet mapped — skip; the after_idle pass will
+                # re-run with real dimensions.
+                return
             sw = self.winfo_screenwidth()
             sh = self.winfo_screenheight()
+            margin = 8
+            taskbar_reserve = 80
             x = mx + (mw - w) // 2
             y = my + (mh - h) // 2
-            x = max(0, min(x, sw - w))
-            y = max(0, min(y, sh - h - 60))
+            x = max(margin, min(x, sw - w - margin))
+            y = max(margin, min(y, sh - h - taskbar_reserve))
             self.geometry(f"+{x}+{y}")
         except Exception:
             pass
