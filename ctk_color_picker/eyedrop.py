@@ -83,9 +83,21 @@ class EyedropperController:
             self._finish(None)
 
     def _build_overlay(self) -> None:
+        # Cover the full physical desktop via winfo_vroot*. `-fullscreen`
+        # would use Tk's cached `winfo_screenwidth` which on Windows with
+        # DPI scaling (or CTk's `SetProcessDpiAwareness(2)` set after Tk
+        # init) returns the *logical* screen size — leaving the right and
+        # bottom strips uncovered and the eyedropper unable to sample
+        # pixels there. vroot reports the full virtual desktop in
+        # physical pixels and also handles multi-monitor.
         overlay = tk.Toplevel(self.dialog)
         overlay.attributes("-alpha", self.config.overlay_alpha)
-        overlay.attributes("-fullscreen", True)
+        overlay.overrideredirect(True)
+        vw = self.dialog.winfo_vrootwidth()
+        vh = self.dialog.winfo_vrootheight()
+        vx = self.dialog.winfo_vrootx()
+        vy = self.dialog.winfo_vrooty()
+        overlay.geometry(f"{vw}x{vh}+{vx}+{vy}")
         overlay.attributes("-topmost", True)
         overlay.configure(cursor="crosshair", bg="black")
         overlay.bind("<Button-1>", self._on_click)
@@ -143,11 +155,17 @@ class EyedropperController:
             top.update_idletasks()
             w = top.winfo_reqwidth()
             h = top.winfo_reqheight()
+            # vroot for the same reason `_build_overlay` uses it: under
+            # CTk's DPI awareness `winfo_screenwidth` returns the logical
+            # width and the toast would render off-center on the physical
+            # desktop.
             try:
-                sw = self.dialog.winfo_screenwidth()
+                sw = self.dialog.winfo_vrootwidth()
+                sx = self.dialog.winfo_vrootx()
             except Exception:
                 sw = 1920
-            x = max(0, (sw - w) // 2)
+                sx = 0
+            x = sx + max(0, (sw - w) // 2)
             y = self.config.hint_y
             top.geometry(f"{w}x{h}+{x}+{y}")
 

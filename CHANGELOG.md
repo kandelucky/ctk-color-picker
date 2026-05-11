@@ -5,6 +5,20 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] — 2026-05-11
+
+### Fixed
+- Eyedropper had a dead-zone on DPI-scaled Windows displays — the
+  overlay covered only the top-left portion of the screen (sized to
+  Tk's cached *logical* `winfo_screenwidth` while events fire in
+  *physical* pixels under CTk's `SetProcessDpiAwareness(2)`), so
+  moving the cursor into the uncovered right / bottom strip stopped
+  the preview bubble and prevented sampling. `_build_overlay` now
+  uses `winfo_vroot*` + explicit `geometry()` instead of
+  `-fullscreen=True`, which reports the full physical virtual desktop
+  (and also handles multi-monitor). The hint toast follows the same
+  switch so it stays centered on the physical desktop.
+
 ## [0.3.3] — 2026-04-25
 
 ### Fixed
